@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container chat-container">
+        <!-- chat app area -->
+        <div class="chat-app">
+            <div class="chat-header">
+                <h2>Chat App</h2>
+                <div class="chat-actions">
+                    <span id="currentUser"></span>
+                    <a class="link" href="login.html">Login</a>
+                    <a class="link" href="register.html">Register</a>
+                </div>
+            </div>
+
+            <div class="chat-layout">
+                <aside class="chat-sidebar">
+                    <div class="online-panel">
+                        <div class="online-header">
+                            <h3>Online Users</h3>
+                            <span id="onlineCount">0 online</span>
+                        </div>
+                        <div id="onlineUsersList" class="online-users-list">
+                            <div class="no-users">No users online</div>
+                        </div>
+                    </div>
+                </aside>
+
+                <section class="chat-main">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="message message--system">
+                            <p>Welcome! Start chatting below.</p>
+                        </div>
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" id="messageInput" placeholder="Type a message">
+                        <button id="sendButton" type="button">Send</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+
+    </div>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <!-- مكتبات -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+    <script src="/js/script.js"></script>
+
+</html>

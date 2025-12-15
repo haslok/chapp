@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register | Chat App</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="register-card">
+            <!-- Header -->
+            <div class="card-header">
+                <div class="logo">
+                    <i class="fas fa-user-shield"></i>
+                </div>
+                <h2>Welcome to our chat app</h2>
+                <p class="subtitle">Create an account to start chatting</p>
+            </div>
+            
+            <!-- Form -->
+            <form class="register-form" id="registerForm">
+                <!-- Username Field -->
+                <div class="form-group">
+                    <div class="input-container">
+                        <i class="fas fa-user input-icon"></i>
+                        <input type="text" id="registerUsername" placeholder=" " required>
+                        <label for="registerUsername">Username</label>
+                    </div>
+                </div>
+                
+                <!-- Password Field -->
+                <div class="form-group">
+                    <div class="input-container">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input type="password" id="registerPassword" placeholder=" " required>
+                        <label for="registerPassword">Password</label>
+                        <button type="button" class="toggle-password" id="toggleRegisterPassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Confirm Password Field -->
+                <div class="form-group">
+                    <div class="input-container">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input  type="password" id="confirmPassword" placeholder=" " required>
+                        <label for="confirmPassword">Confirm Password</label>
+                        <button type="button" class="toggle-password" id="toggleConfirmPassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <button type="submit" class="submit-btn" id="registerSubmit">
+                    <span class="btn-text">Register</span>
+                    <i class="fas fa-arrow-right btn-icon"></i>
+                </button>
+                                
+                <!-- Sign Up Link -->
+                <p class="signup-link">
+                    Already have an account? <a href="login.html">Login</a>
+                </p>
+            </form>
+        </div>
+    </div>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="/js/script.js"></script>
+</body>
+</html>

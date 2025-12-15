@@ -1,0 +1,70 @@
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Login | Secure Access</title>
+        <link rel="stylesheet" href="/css/style.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    </head>
+    <body>
+        <div class="container">
+            <div class="login-card">
+                <!-- Header -->
+                <div class="card-header">
+                    <div class="logo">
+                        <i class="fas fa-user-shield"></i>
+                    </div>
+                    <h2>Welcome Back</h2>
+                    <p class="subtitle">Sign in to your account</p>
+                </div>
+                
+                <!-- Form -->
+                    <form class="login-form" id="loginForm">
+                    <!-- Username Field -->
+                    <div class="form-group">
+                        <div class="input-container">
+                            <i class="fas fa-user input-icon"></i>
+                                <input type="text" id="loginUsername" placeholder=" " required>
+                                <label for="loginUsername">Username or Email</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Password Field -->
+                    <div class="form-group">
+                        <div class="input-container">
+                            <i class="fas fa-lock input-icon"></i>
+                                <input type="password" id="loginPassword" placeholder=" " required>
+                                <label for="loginPassword">Password</label>
+                                <button type="button" class="toggle-password" id="toggleLoginPassword">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Remember Me & Forgot Password -->
+                    <div class="form-options">
+                        <div class="remember-me">
+                            <input type="checkbox" id="remember">
+                            <label for="remember">Remember me</label>
+                        </div>
+                        <a href="#" class="forgot-password">Forgot password?</a>
+                    </div>
+                    
+                    <!-- Submit Button -->
+                    <button type="submit" class="submit-btn">
+                        <span class="btn-text">Sign In</span>
+                        <i class="fas fa-arrow-right btn-icon"></i>
+                    </button>
+                                    
+                    <!-- Sign Up Link -->
+                    <p class="signup-link">
+                        Don't have an account? <a href="register.html">Sign up</a>
+                    </p>
+                </form>
+            </div>
+        </div>
+        <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+        <script src="/js/script.js"></script>
+    </body>
+    </html>
