@@ -1,5 +1,4 @@
 {
-  "//note": "Vercel does not natively support long-lived WebSocket servers. This config exposes main.js as a Node serverless function for HTTP routes. Socket.IO features may need a separate WebSocket-capable host.",
   "version": 2,
   "builds": [
     {
