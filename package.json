@@ -1,9 +1,11 @@
 {
   "name": "chapp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Realtime chat app using Express, Socket.IO and Supabase",
+  "main": "main.js",
   "scripts": {
+    "dev": "node main.js",
+    "start": "node main.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
