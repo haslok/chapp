@@ -553,20 +553,49 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
     
             try {
-                // Try POST first, fallback to PUT if 405 (reverse proxy issue)
+                // Try POST first, fallback to PUT, then /api/login, then GET
                 let response = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
                 
-                // If 405, try PUT as fallback (some reverse proxies block POST)
+                // If 405, try PUT as fallback
                 if (response.status === 405) {
-                    console.log('POST failed with 405, trying PUT as fallback...');
+                    console.log('POST /login failed with 405, trying PUT...');
                     response = await fetch('/login', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password })
+                    });
+                }
+                
+                // If still 405, try /api/login POST
+                if (response.status === 405) {
+                    console.log('PUT /login failed, trying POST /api/login...');
+                    response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                }
+                
+                // If still 405, try /api/login PUT
+                if (response.status === 405) {
+                    console.log('POST /api/login failed, trying PUT /api/login...');
+                    response = await fetch('/api/login', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                }
+                
+                // Last resort: GET with query params (less secure but works)
+                if (response.status === 405) {
+                    console.log('All POST/PUT methods failed, trying GET /api/login as last resort...');
+                    const params = new URLSearchParams({ username, password });
+                    response = await fetch(`/api/login?${params.toString()}`, {
+                        method: 'GET'
                     });
                 }
                 

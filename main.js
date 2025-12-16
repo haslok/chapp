@@ -361,6 +361,20 @@ app.post('/login', loginLimiter, handleLogin);
 // Login endpoint - PUT (fallback for reverse proxies that block POST)
 app.put('/login', loginLimiter, handleLogin);
 
+// Login endpoint - Alternative route /api/login (some proxies allow /api/* routes)
+app.post('/api/login', loginLimiter, handleLogin);
+app.put('/api/login', loginLimiter, handleLogin);
+
+// Login endpoint - GET with query params (last resort, less secure but works with restrictive proxies)
+app.get('/api/login', loginLimiter, async (req, res) => {
+    const { username, password } = req.query;
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+    req.body = { username, password };
+    return handleLogin(req, res);
+});
+
 // Register endpoint
 app.post('/register', async (req, res) => {
     try {
