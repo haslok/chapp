@@ -990,8 +990,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Expose a single shared instance you can use elsewhere
-    window.chatCrypto = new Cryption();
+    // Wait for libraries to load before initializing Cryption
+    function initCryption() {
+        if (typeof nacl !== 'undefined' && nacl.box && typeof nacl.util !== 'undefined') {
+            window.chatCrypto = new Cryption();
+        } else {
+            // Retry after a short delay if libraries aren't loaded yet
+            setTimeout(() => {
+                if (typeof nacl !== 'undefined' && nacl.box && typeof nacl.util !== 'undefined') {
+                    window.chatCrypto = new Cryption();
+                } else {
+                    console.warn('Cryption: Libraries still not loaded after retry. Encryption disabled.');
+                    window.chatCrypto = { enabled: false };
+                }
+            }, 500);
+        }
+    }
+    
+    // Initialize Cryption when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCryption);
+    } else {
+        initCryption();
+    }
 
     // عند تسجيل الدخول ووجود مكتبة التشفير، نحفظ المفتاح العام في السيرفر (Supabase)
     if (window.chatCrypto && window.chatCrypto.enabled && currentUsername) {
