@@ -15,10 +15,18 @@ const PORT = process.env.PORT || 3000;
 // CORS middleware (for cross-origin requests if needed)
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-HTTP-Method-Override');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
+    }
+    next();
+});
+
+// Handle method override for reverse proxies (some proxies don't pass POST correctly)
+app.use((req, res, next) => {
+    if (req.headers['x-http-method-override']) {
+        req.method = req.headers['x-http-method-override'].toUpperCase();
     }
     next();
 });
@@ -29,7 +37,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Debug middleware - log all requests
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`, req.method === 'POST' ? { body: req.body } : '');
+    console.log(`${req.method} ${req.url}`, {
+        method: req.method,
+        originalMethod: req.headers['x-http-method-override'] || 'none',
+        contentType: req.headers['content-type'],
+        body: req.method === 'POST' ? { username: req.body?.username } : ''
+    });
     next();
 });
 
