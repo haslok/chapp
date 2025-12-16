@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit = require('express-rate-limit');
@@ -291,6 +292,7 @@ app.get('/register', (req, res) => {
 
 // Login endpoint
 app.post('/login', loginLimiter, async (req, res) => {
+    console.log('POST /login received', { method: req.method, url: req.url, body: { username: req.body?.username } });
     try {
         const { username, password } = req.body;
         
@@ -508,8 +510,10 @@ app.get('/health', (req, res) => {
 });
 
 // Static files (after all routes to avoid conflicts)
-app.use(express.static(path.join(__dirname)));
-app.use(express.static(path.join(__dirname, 'public')));
+// Only serve specific directories, not root directory to avoid route conflicts
+if (fs.existsSync(path.join(__dirname, 'public'))) {
+    app.use(express.static(path.join(__dirname, 'public')));
+}
 app.use('/css', express.static(path.join(__dirname, 'css')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
 
