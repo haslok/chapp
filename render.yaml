@@ -1,17 +1,1 @@
-services:
-  - type: web
-    name: chapp
-    env: node
-    plan: free
-    buildCommand: "npm install"
-    startCommand: "npm start"
-    autoDeploy: true
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-
 
