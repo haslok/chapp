@@ -553,11 +553,22 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
     
             try {
-                const response = await fetch('/login', {
+                // Try POST first, fallback to PUT if 405 (reverse proxy issue)
+                let response = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
+                
+                // If 405, try PUT as fallback (some reverse proxies block POST)
+                if (response.status === 405) {
+                    console.log('POST failed with 405, trying PUT as fallback...');
+                    response = await fetch('/login', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                }
                 
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -567,7 +578,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         errorMsg = errorJson.error || errorMsg;
                     } catch (e) {
                         if (response.status === 405) {
-                            errorMsg = 'Server error: Method not allowed. Please check server configuration.';
+                            errorMsg = 'Server error: Method not allowed. Please check reverse proxy configuration.';
                         } else {
                             errorMsg = `Server error (${response.status}). Please try again.`;
                         }

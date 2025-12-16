@@ -309,9 +309,9 @@ app.get('/register', (req, res) => {
     res.sendFile(__dirname + '/register.html');
 });
 
-// Login endpoint
-app.post('/login', loginLimiter, async (req, res) => {
-    console.log('POST /login received', { method: req.method, url: req.url, body: { username: req.body?.username } });
+// Login handler function (shared between POST and PUT)
+const handleLogin = async (req, res) => {
+    console.log(`${req.method} /login received`, { method: req.method, url: req.url, body: { username: req.body?.username } });
     try {
         const { username, password } = req.body;
         
@@ -353,7 +353,13 @@ app.post('/login', loginLimiter, async (req, res) => {
         console.error('Error logging in user:', error);
         res.status(500).json({ error: 'Failed to login user' });
     }
-});
+};
+
+// Login endpoint - POST (primary)
+app.post('/login', loginLimiter, handleLogin);
+
+// Login endpoint - PUT (fallback for reverse proxies that block POST)
+app.put('/login', loginLimiter, handleLogin);
 
 // Register endpoint
 app.post('/register', async (req, res) => {
