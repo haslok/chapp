@@ -27,6 +27,12 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Debug middleware - log all requests
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`, req.method === 'POST' ? { body: req.body } : '');
+    next();
+});
+
 // Supabase clients
 const supabase = createClient(
     process.env.SUPABASE_URL,
