@@ -559,6 +559,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({ username, password })
                 });
                 
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    let errorMsg = 'Login failed. Please try again.';
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        errorMsg = errorJson.error || errorMsg;
+                    } catch (e) {
+                        if (response.status === 405) {
+                            errorMsg = 'Server error: Method not allowed. Please check server configuration.';
+                        } else {
+                            errorMsg = `Server error (${response.status}). Please try again.`;
+                        }
+                    }
+                    showError(errorMsg);
+                    clearCurrentUser();
+                    return;
+                }
+                
                 const result = await response.json();
                 console.log('Login response:', result);
     
@@ -656,8 +674,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password })
                     });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        let errorMsg = 'Registration failed. Please try again.';
+                        try {
+                            const errorJson = JSON.parse(errorText);
+                            errorMsg = errorJson.error || errorMsg;
+                        } catch (e) {
+                            if (response.status === 405) {
+                                errorMsg = 'Server error: Method not allowed. Please check server configuration.';
+                            } else {
+                                errorMsg = `Server error (${response.status}). Please try again.`;
+                            }
+                        }
+                        alert(errorMsg);
+                        return;
+                    }
+                    
                     const data = await response.json();
-                    if (!response.ok || data.error) {
+                    if (data.error) {
                         alert(data.error || 'Registration failed. Please try again.');
                         return;
                     }
@@ -830,8 +866,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // You can use `window.chatCrypto` manually to encrypt/decrypt messages if you want.
     class Cryption {
         constructor() {
-            if (typeof nacl === 'undefined' || !nacl.box || !nacl.util) {
-                console.warn('Cryption: tweetnacl or tweetnacl-util not loaded. Encryption will not work.');
+            // Wait a bit for libraries to load if they're still loading
+            if (typeof nacl === 'undefined' || !nacl.box) {
+                console.warn('Cryption: tweetnacl not loaded. Encryption will not work.');
+                this.enabled = false;
+                return;
+            }
+            // Check for tweetnacl-util (attaches to nacl.util)
+            if (typeof nacl.util === 'undefined' || !nacl.util.encodeBase64) {
+                console.warn('Cryption: tweetnacl-util not loaded. Encryption will not work.');
                 this.enabled = false;
                 return;
             }
