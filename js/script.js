@@ -637,13 +637,31 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (isSubmitting) return;
             
-            const username = document.getElementById('loginUsername').value.trim();
+            // Validate and sanitize input
+            const usernameInput = document.getElementById('loginUsername').value.trim();
             const password = document.getElementById('loginPassword').value;
             const remember = document.getElementById('remember').checked;
     
-            if (!username || !password) {
-                showError('Please fill in all fields');
+            // Validate username
+            const usernameValidation = window.SecurityUtils ? window.SecurityUtils.validateUsername(usernameInput) : { valid: usernameInput.length >= 3, username: usernameInput };
+            if (!usernameValidation.valid) {
+                showError(usernameValidation.error || 'Please enter a valid username');
                 return;
+            }
+            const username = usernameValidation.username;
+    
+            if (!password) {
+                showError('Please enter your password');
+                return;
+            }
+            
+            // Rate limiting
+            if (window.SecurityUtils) {
+                const rateLimitCheck = window.SecurityUtils.checkRateLimit(`login_${username}`, 5, 15 * 60 * 1000);
+                if (!rateLimitCheck.allowed) {
+                    showError(rateLimitCheck.message);
+                    return;
+                }
             }
     
             isSubmitting = true;
@@ -670,29 +688,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (window.supabaseClient) {
-                    // Direct Supabase query (client-side)
-                    const { data, error } = await window.supabaseClient
+                    // Get user from database
+                    const { data: userData, error: fetchError } = await window.supabaseClient
                         .from('users')
                         .select('id, username, password, is_online, created_at, public_key, last_seen')
                         .eq('username', username)
-                        .eq('password', password)
                         .single();
                     
-                    if (error) {
-                        if (error.code === 'PGRST116') {
-                            // No rows returned
-                            showError('Invalid username or password');
-                        } else {
-                            showError(error.message || 'Login failed. Please try again.');
-                        }
+                    if (fetchError || !userData) {
+                        // Don't reveal if user exists or not (security best practice)
+                        showError('Invalid username or password');
                         clearCurrentUser();
                         return;
                     }
                     
-                    if (!data || !data.username) {
+                    // Verify password (if using hashed passwords)
+                    let passwordValid = false;
+                    if (window.SecurityUtils && userData.password && userData.password.includes(':')) {
+                        // Password is hashed, verify it
+                        passwordValid = await window.SecurityUtils.verifyPassword(password, userData.password);
+                    } else {
+                        // Legacy: plain text password (for migration)
+                        passwordValid = userData.password === password;
+                    }
+                    
+                    if (!passwordValid) {
                         showError('Invalid username or password');
                         clearCurrentUser();
                         return;
+                    }
+                    
+                    // Clear rate limit on successful login
+                    if (window.SecurityUtils) {
+                        window.SecurityUtils.clearRateLimit(`login_${username}`);
                     }
                     
                     // Update user status to online
@@ -711,11 +739,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     result = {
                         success: true,
                         data: {
-                            id: data.id,
-                            username: data.username,
+                            id: userData.id,
+                            username: userData.username,
                             is_online: true,
-                            created_at: data.created_at,
-                            public_key: data.public_key
+                            created_at: userData.created_at,
+                            public_key: userData.public_key
                         }
                     };
                 } else {
@@ -797,24 +825,34 @@ document.addEventListener('DOMContentLoaded', function() {
         setupPasswordToggle('toggleRegisterPassword', 'registerPassword');
         setupPasswordToggle('toggleConfirmPassword', 'confirmPassword');
 
-        registerForm.addEventListener('submit', function(e) {
+        registerForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            const username = document.getElementById('registerUsername').value.trim();
+            
+            const usernameInput = document.getElementById('registerUsername').value.trim();
             const password = document.getElementById('registerPassword').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
 
-            if (!username || !password || !confirmPassword) {
+            // Validate inputs
+            if (!usernameInput || !password || !confirmPassword) {
                 alert('Please fill in all fields.');
                 return;
             }
-            if (username.length < 3) {
-                alert('Username must be at least 3 characters.');
+            
+            // Validate username
+            const usernameValidation = window.SecurityUtils ? window.SecurityUtils.validateUsername(usernameInput) : { valid: usernameInput.length >= 3, username: usernameInput };
+            if (!usernameValidation.valid) {
+                alert(usernameValidation.error || 'Invalid username');
                 return;
             }
-            if (password.length < 6) {
-                alert('Password must be at least 6 characters.');
+            const username = usernameValidation.username;
+            
+            // Validate password
+            const passwordValidation = window.SecurityUtils ? window.SecurityUtils.validatePassword(password) : { valid: password.length >= 6 };
+            if (!passwordValidation.valid) {
+                alert(passwordValidation.error || 'Password must be at least 6 characters.');
                 return;
             }
+            
             if (password !== confirmPassword) {
                 alert('Passwords do not match.');
                 return;
@@ -824,43 +862,53 @@ document.addEventListener('DOMContentLoaded', function() {
             btnIcon.className = 'fas fa-spinner fa-spin btn-icon';
             submitBtn.disabled = true;
 
-            setTimeout(async () => {
-                try {
-                    let result = null;
+            try {
+                let result = null;
+                
+                if (window.supabaseClient) {
+                    // Check if username already exists
+                    const { data: existingUser } = await window.supabaseClient
+                        .from('users')
+                        .select('username')
+                        .eq('username', username)
+                        .single();
                     
-                    if (window.supabaseClient) {
-                        // Check if username already exists
-                        const { data: existingUser } = await window.supabaseClient
-                            .from('users')
-                            .select('username')
-                            .eq('username', username)
-                            .single();
-                        
-                        if (existingUser) {
-                            alert('Username already exists. Please choose another one.');
-                            return;
+                    if (existingUser) {
+                        alert('Username already exists. Please choose another one.');
+                        return;
+                    }
+                    
+                    // Hash password before storing
+                    let hashedPassword = password;
+                    if (window.SecurityUtils) {
+                        try {
+                            hashedPassword = await window.SecurityUtils.hashPassword(password);
+                        } catch (hashError) {
+                            console.error('Error hashing password:', hashError);
+                            // Fallback to plain text if hashing fails (for compatibility)
                         }
-                        
-                        // Create new user using Supabase Client SDK
-                        const { data, error } = await window.supabaseClient
-                            .from('users')
-                            .insert({
-                                username: username,
-                                password: password,
-                                public_key: 'placeholder-public-key',
-                                is_online: false,
-                                created_at: new Date().toISOString(),
-                                last_seen: new Date().toISOString()
-                            })
-                            .select()
-                            .single();
-                        
-                        if (error) {
-                            alert(error.message || 'Registration failed. Please try again.');
-                            return;
-                        }
-                        
-                        result = { success: true };
+                    }
+                    
+                    // Create new user using Supabase Client SDK
+                    const { data, error } = await window.supabaseClient
+                        .from('users')
+                        .insert({
+                            username: username,
+                            password: hashedPassword,
+                            public_key: 'placeholder-public-key',
+                            is_online: false,
+                            created_at: new Date().toISOString(),
+                            last_seen: new Date().toISOString()
+                        })
+                        .select()
+                        .single();
+                    
+                    if (error) {
+                        alert(error.message || 'Registration failed. Please try again.');
+                        return;
+                    }
+                    
+                    result = { success: true };
                     } else {
                         // Fallback: Try server endpoint (if available)
                         const response = await fetch('/register', {
@@ -893,7 +941,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     btnIcon.className = 'fas fa-arrow-right btn-icon';
                     submitBtn.disabled = false;
                 }
-            }, 800);
         });
     }
     
