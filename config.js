@@ -1,23 +1,38 @@
 // Supabase Configuration
-// IMPORTANT: Replace these with your actual Supabase credentials
-// You can find them in your Supabase project settings: https://app.supabase.com/project/_/settings/api
 const SUPABASE_CONFIG = {
-    url: 'YOUR_SUPABASE_URL', // e.g., 'https://xxxxx.supabase.co'
-    anonKey: 'YOUR_SUPABASE_ANON_KEY' // Your Supabase anon/public key (safe to expose in client-side code)
+    url: 'https://gptlsxdpisuamuzueogg.supabase.co',
+    anonKey: 'sb_publishable_HF3kZIX5QIKhQpePlBYeOg_VxBruKF3'
 };
+
+// Make config globally available
+window.SUPABASE_CONFIG = SUPABASE_CONFIG;
 
 // Initialize Supabase client (works in browser)
 let supabaseClient = null;
-if (typeof supabase !== 'undefined' && SUPABASE_CONFIG.url !== 'YOUR_SUPABASE_URL') {
-    try {
-        supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        console.log('Supabase client initialized');
-    } catch (error) {
-        console.error('Failed to initialize Supabase client:', error);
+
+// Wait for Supabase SDK to load, then initialize
+function initSupabase() {
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+        try {
+            supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            console.log('✅ Supabase client initialized successfully');
+            window.supabaseClient = supabaseClient;
+        } catch (error) {
+            console.error('❌ Failed to initialize Supabase client:', error);
+            window.supabaseClient = null;
+        }
+    } else {
+        // Retry after a short delay if Supabase SDK hasn't loaded yet
+        setTimeout(initSupabase, 100);
     }
-} else if (SUPABASE_CONFIG.url === 'YOUR_SUPABASE_URL') {
-    console.warn('⚠️ Please configure your Supabase credentials in config.js');
 }
 
-// Make it globally available
+// Start initialization
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSupabase);
+} else {
+    initSupabase();
+}
+
+// Make it globally available immediately (will be set when initialized)
 window.supabaseClient = supabaseClient;

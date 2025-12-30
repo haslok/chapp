@@ -655,6 +655,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Use Supabase Client SDK directly (works on GitHub Pages)
                 let result = null;
                 
+                // Wait a bit for Supabase to initialize if needed
+                if (!window.supabaseClient && typeof supabase !== 'undefined') {
+                    // Try to initialize if config is available
+                    const config = window.SUPABASE_CONFIG || (typeof SUPABASE_CONFIG !== 'undefined' ? SUPABASE_CONFIG : null);
+                    if (config && config.url && config.url !== 'YOUR_SUPABASE_URL') {
+                        try {
+                            window.supabaseClient = supabase.createClient(config.url, config.anonKey);
+                            console.log('Supabase client initialized on demand');
+                        } catch (e) {
+                            console.error('Failed to initialize Supabase:', e);
+                        }
+                    }
+                }
+                
                 if (window.supabaseClient) {
                     // Direct Supabase query (client-side)
                     const { data, error } = await window.supabaseClient
