@@ -21,73 +21,137 @@ document.addEventListener('DOMContentLoaded', function() {
         currentUsername = null;
     };
     
-    // WebSocket functions
+    // WebSocket/Realtime functions
+    let realtimeChannel = null;
+    
     const connectWebSocket = () => {
-        if (socket) {
-            socket.disconnect();
-        }
-        
-        socket = io();
-        
-        socket.on('connect', () => {
-            console.log('WebSocket connected');
+        if (window.supabaseClient && currentUsername) {
+            // Use Supabase Realtime (works on GitHub Pages)
+            console.log('Connecting to Supabase Realtime...');
             
-            if (currentUsername) {
-                // Notify server that user is online
-                socket.emit('user-login', { username: currentUsername });
+            // Subscribe to user status changes
+            realtimeChannel = window.supabaseClient
+                .channel('user-status-changes')
+                .on('postgres_changes', 
+                    { 
+                        event: '*', 
+                        schema: 'public', 
+                        table: 'users',
+                        filter: 'is_online=eq.true'
+                    },
+                    (payload) => {
+                        console.log('User status changed:', payload);
+                        if (payload.new) {
+                            updateUserStatusUI(payload.new.username, payload.new.is_online);
+                            showNotification(`${payload.new.username} is now ${payload.new.is_online ? 'online' : 'offline'}`);
+                            
+                            // Refresh online users list
+                            refreshOnlineUsers();
+                        }
+                    }
+                )
+                .subscribe();
+            
+            // Update user status to online
+            window.supabaseClient
+                .from('users')
+                .update({ 
+                    is_online: true,
+                    last_seen: new Date().toISOString()
+                })
+                .eq('username', currentUsername)
+                .then(() => {
+                    refreshOnlineUsers();
+                });
+            
+            // Start keep-alive
+            startKeepAlive();
+        } else if (typeof io !== 'undefined') {
+            // Fallback to Socket.IO (requires server)
+            if (socket) {
+                socket.disconnect();
+            }
+            
+            socket = io();
+            
+            socket.on('connect', () => {
+                console.log('WebSocket connected');
                 
-                // Start keep-alive
-                startKeepAlive();
+                if (currentUsername) {
+                    // Notify server that user is online
+                    socket.emit('user-login', { username: currentUsername });
+                    
+                    // Start keep-alive
+                    startKeepAlive();
+                }
+            });
+            
+            socket.on('user-status-changed', (data) => {
+                console.log('User status changed:', data);
+                updateUserStatusUI(data.username, data.is_online);
+                showNotification(`${data.username} is now ${data.is_online ? 'online' : 'offline'}`);
+            });
+            
+            socket.on('online-users-updated', (users) => {
+                console.log('Online users updated:', users);
+                updateOnlineUsersList(users);
+                updateOnlineCount(users.length);
+            });
+
+            // استقبال الرسائل المشفرة (إن وُجدت) وربطها بواجهة الدردشة
+            socket.on('encrypted-message', (data) => {
+                const { from, encryptedData } = data || {};
+                if (!encryptedData) return;
+
+                if (!window.chatCrypto || !window.chatCrypto.enabled) {
+                    appendChatMessage(`${from}: [encrypted message]`, 'system');
+                    return;
+                }
+
+                const plainText = window.chatCrypto.decryptMessage(
+                    encryptedData.senderPublicKey,
+                    encryptedData
+                );
+
+                if (plainText) {
+                    appendChatMessage(`${from}: ${plainText}`, 'user');
+                } else {
+                    appendChatMessage(`${from}: [failed to decrypt message]`, 'system');
+                }
+            });
+            
+            socket.on('keep-alive-ack', () => {
+                console.log('Keep-alive acknowledged');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('WebSocket disconnected');
+                stopKeepAlive();
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('WebSocket connection error:', error);
+                showError('Connection lost. Attempting to reconnect...', false);
+            });
+        } else {
+            console.warn('No realtime connection available');
+        }
+    };
+    
+    // Helper function to refresh online users list
+    const refreshOnlineUsers = async () => {
+        if (window.supabaseClient) {
+            const { data, error } = await window.supabaseClient
+                .from('users')
+                .select('username, is_online, last_seen, public_key')
+                .eq('is_online', true)
+                .order('username', { ascending: true });
+            
+            if (!error && data) {
+                updateOnlineUsersList(data);
+                updateOnlineCount(data.length);
             }
-        });
-        
-        socket.on('user-status-changed', (data) => {
-            console.log('User status changed:', data);
-            updateUserStatusUI(data.username, data.is_online);
-            showNotification(`${data.username} is now ${data.is_online ? 'online' : 'offline'}`);
-        });
-        
-        socket.on('online-users-updated', (users) => {
-            console.log('Online users updated:', users);
-            updateOnlineUsersList(users);
-            updateOnlineCount(users.length);
-        });
-
-        // استقبال الرسائل المشفرة (إن وُجدت) وربطها بواجهة الدردشة
-        socket.on('encrypted-message', (data) => {
-            const { from, encryptedData } = data || {};
-            if (!encryptedData) return;
-
-            if (!window.chatCrypto || !window.chatCrypto.enabled) {
-                appendChatMessage(`${from}: [encrypted message]`, 'system');
-                return;
-            }
-
-            const plainText = window.chatCrypto.decryptMessage(
-                encryptedData.senderPublicKey,
-                encryptedData
-            );
-
-            if (plainText) {
-                appendChatMessage(`${from}: ${plainText}`, 'user');
-            } else {
-                appendChatMessage(`${from}: [failed to decrypt message]`, 'system');
-            }
-        });
-        
-        socket.on('keep-alive-ack', () => {
-            console.log('Keep-alive acknowledged');
-        });
-        
-        socket.on('disconnect', () => {
-            console.log('WebSocket disconnected');
-            stopKeepAlive();
-        });
-        
-        socket.on('connect_error', (error) => {
-            console.error('WebSocket connection error:', error);
-            showError('Connection lost. Attempting to reconnect...', false);
-        });
+        }
     };
     
     const startKeepAlive = () => {
@@ -96,8 +160,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         keepAliveInterval = setInterval(() => {
-            if (socket && socket.connected && currentUsername) {
-                socket.emit('keep-alive', { username: currentUsername });
+            if (currentUsername) {
+                if (window.supabaseClient) {
+                    // Update last_seen using Supabase
+                    window.supabaseClient
+                        .from('users')
+                        .update({ last_seen: new Date().toISOString() })
+                        .eq('username', currentUsername)
+                        .then(() => console.log('Keep-alive updated'));
+                } else if (socket && socket.connected) {
+                    socket.emit('keep-alive', { username: currentUsername });
+                }
             }
         }, 30000); // كل 30 ثانية
     };
@@ -110,7 +183,22 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     const disconnectWebSocket = () => {
-        if (socket) {
+        if (window.supabaseClient && currentUsername) {
+            // Update user status to offline using Supabase
+            window.supabaseClient
+                .from('users')
+                .update({ 
+                    is_online: false,
+                    last_seen: new Date().toISOString()
+                })
+                .eq('username', currentUsername)
+                .then(() => {
+                    if (realtimeChannel) {
+                        window.supabaseClient.removeChannel(realtimeChannel);
+                        realtimeChannel = null;
+                    }
+                });
+        } else if (socket) {
             if (currentUsername) {
                 socket.emit('user-logout', { username: currentUsername });
             }
@@ -312,18 +400,29 @@ document.addEventListener('DOMContentLoaded', function() {
     const logout = async () => {
         if (currentUsername) {
             try {
-                // Update status on server
-                await fetch('/logout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUsername })
-                });
+                if (window.supabaseClient) {
+                    // Update status using Supabase Client SDK
+                    await window.supabaseClient
+                        .from('users')
+                        .update({ 
+                            is_online: false,
+                            last_seen: new Date().toISOString()
+                        })
+                        .eq('username', currentUsername);
+                } else {
+                    // Fallback: Update status on server
+                    await fetch('/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: currentUsername })
+                    });
+                }
             } catch (error) {
                 console.error('Error during logout:', error);
             }
         }
         
-        // Disconnect WebSocket
+        // Disconnect WebSocket/Realtime
         disconnectWebSocket();
         
         // Clear local storage
@@ -553,71 +652,75 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
     
             try {
-                // Try POST first, fallback to PUT, then /api/login, then GET
-                let response = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+                // Use Supabase Client SDK directly (works on GitHub Pages)
+                let result = null;
                 
-                // If 405, try PUT as fallback
-                if (response.status === 405) {
-                    console.log('POST /login failed with 405, trying PUT...');
-                    response = await fetch('/login', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
-                }
-                
-                // If still 405, try /api/login POST
-                if (response.status === 405) {
-                    console.log('PUT /login failed, trying POST /api/login...');
-                    response = await fetch('/api/login', {
+                if (window.supabaseClient) {
+                    // Direct Supabase query (client-side)
+                    const { data, error } = await window.supabaseClient
+                        .from('users')
+                        .select('id, username, password, is_online, created_at, public_key, last_seen')
+                        .eq('username', username)
+                        .eq('password', password)
+                        .single();
+                    
+                    if (error) {
+                        if (error.code === 'PGRST116') {
+                            // No rows returned
+                            showError('Invalid username or password');
+                        } else {
+                            showError(error.message || 'Login failed. Please try again.');
+                        }
+                        clearCurrentUser();
+                        return;
+                    }
+                    
+                    if (!data || !data.username) {
+                        showError('Invalid username or password');
+                        clearCurrentUser();
+                        return;
+                    }
+                    
+                    // Update user status to online
+                    const { error: updateError } = await window.supabaseClient
+                        .from('users')
+                        .update({ 
+                            is_online: true,
+                            last_seen: new Date().toISOString()
+                        })
+                        .eq('username', username);
+                    
+                    if (updateError) {
+                        console.error('Error updating user status:', updateError);
+                    }
+                    
+                    result = {
+                        success: true,
+                        data: {
+                            id: data.id,
+                            username: data.username,
+                            is_online: true,
+                            created_at: data.created_at,
+                            public_key: data.public_key
+                        }
+                    };
+                } else {
+                    // Fallback: Try server endpoint (if available)
+                    let response = await fetch('/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ username, password })
-                    });
-                }
-                
-                // If still 405, try /api/login PUT
-                if (response.status === 405) {
-                    console.log('POST /api/login failed, trying PUT /api/login...');
-                    response = await fetch('/api/login', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
-                }
-                
-                // Last resort: GET with query params (less secure but works)
-                if (response.status === 405) {
-                    console.log('All POST/PUT methods failed, trying GET /api/login as last resort...');
-                    const params = new URLSearchParams({ username, password });
-                    response = await fetch(`/api/login?${params.toString()}`, {
-                        method: 'GET'
-                    });
-                }
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    let errorMsg = 'Login failed. Please try again.';
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        errorMsg = errorJson.error || errorMsg;
-                    } catch (e) {
-                        if (response.status === 405) {
-                            errorMsg = 'Server error: Method not allowed. Please check reverse proxy configuration.';
-                        } else {
-                            errorMsg = `Server error (${response.status}). Please try again.`;
-                        }
+                    }).catch(() => null);
+                    
+                    if (!response || response.status === 405 || !response.ok) {
+                        showError('Supabase not configured. Please set your credentials in config.js');
+                        clearCurrentUser();
+                        return;
                     }
-                    showError(errorMsg);
-                    clearCurrentUser();
-                    return;
+                    
+                    result = await response.json();
                 }
                 
-                const result = await response.json();
                 console.log('Login response:', result);
     
                 if (result.error) {
@@ -636,7 +739,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         setCurrentUser(userData.username);
                         localStorage.setItem('userId', userData.id);
                         
-                        // Connect to WebSocket
+                        // Connect to WebSocket or Supabase Realtime
                         connectWebSocket();
                         
                         // عرض رسالة نجاح
@@ -709,34 +812,62 @@ document.addEventListener('DOMContentLoaded', function() {
 
             setTimeout(async () => {
                 try {
-                    const response = await fetch('/register', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
+                    let result = null;
                     
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        let errorMsg = 'Registration failed. Please try again.';
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            errorMsg = errorJson.error || errorMsg;
-                        } catch (e) {
-                            if (response.status === 405) {
-                                errorMsg = 'Server error: Method not allowed. Please check server configuration.';
-                            } else {
-                                errorMsg = `Server error (${response.status}). Please try again.`;
-                            }
+                    if (window.supabaseClient) {
+                        // Check if username already exists
+                        const { data: existingUser } = await window.supabaseClient
+                            .from('users')
+                            .select('username')
+                            .eq('username', username)
+                            .single();
+                        
+                        if (existingUser) {
+                            alert('Username already exists. Please choose another one.');
+                            return;
                         }
-                        alert(errorMsg);
+                        
+                        // Create new user using Supabase Client SDK
+                        const { data, error } = await window.supabaseClient
+                            .from('users')
+                            .insert({
+                                username: username,
+                                password: password,
+                                public_key: 'placeholder-public-key',
+                                is_online: false,
+                                created_at: new Date().toISOString(),
+                                last_seen: new Date().toISOString()
+                            })
+                            .select()
+                            .single();
+                        
+                        if (error) {
+                            alert(error.message || 'Registration failed. Please try again.');
+                            return;
+                        }
+                        
+                        result = { success: true };
+                    } else {
+                        // Fallback: Try server endpoint (if available)
+                        const response = await fetch('/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        }).catch(() => null);
+                        
+                        if (!response || response.status === 405 || !response.ok) {
+                            alert('Supabase not configured. Please set your credentials in config.js');
+                            return;
+                        }
+                        
+                        result = await response.json();
+                    }
+                    
+                    if (result.error) {
+                        alert(result.error || 'Registration failed. Please try again.');
                         return;
                     }
                     
-                    const data = await response.json();
-                    if (data.error) {
-                        alert(data.error || 'Registration failed. Please try again.');
-                        return;
-                    }
                     alert('Account created successfully! You can now log in.');
                     registerForm.reset();
                     window.location.href = 'login.html';
@@ -774,8 +905,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (currentUser) {
             currentUserLabel.textContent = `Logged in as ${currentUser}`;
             
-            // Connect to WebSocket if not already connected
-            if (!socket || !socket.connected) {
+            // Connect to WebSocket/Realtime if not already connected
+            if ((!socket || !socket.connected) && !realtimeChannel) {
                 connectWebSocket();
             }
             
@@ -788,15 +919,35 @@ document.addEventListener('DOMContentLoaded', function() {
             currentUserLabel.parentElement.appendChild(logoutBtn);
             
             // Fetch initial online users
-            fetch('/api/online-users')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        updateOnlineUsersList(data.users);
-                        updateOnlineCount(data.users.length);
-                    }
-                })
-                .catch(error => console.error('Error fetching online users:', error));
+            if (window.supabaseClient) {
+                // Use Supabase Client SDK
+                window.supabaseClient
+                    .from('users')
+                    .select('username, is_online, last_seen, public_key')
+                    .eq('is_online', true)
+                    .order('username', { ascending: true })
+                    .then(({ data, error }) => {
+                        if (error) {
+                            console.error('Error fetching online users:', error);
+                            return;
+                        }
+                        if (data) {
+                            updateOnlineUsersList(data);
+                            updateOnlineCount(data.length);
+                        }
+                    });
+            } else {
+                // Fallback: Try server endpoint
+                fetch('/api/online-users')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            updateOnlineUsersList(data.users);
+                            updateOnlineCount(data.users.length);
+                        }
+                    })
+                    .catch(error => console.error('Error fetching online users:', error));
+            }
         } else {
             currentUserLabel.textContent = 'Not logged in';
         }
@@ -815,9 +966,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (
                 recipient &&
                 window.chatCrypto &&
-                window.chatCrypto.enabled &&
-                socket &&
-                socket.connected
+                window.chatCrypto.enabled
             ) {
                 const recipientKey = userPublicKeys[recipient];
 
@@ -825,10 +974,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     const encryptedData = window.chatCrypto.encryptMessage(recipientKey, text);
 
                     if (encryptedData) {
-                        socket.emit('encrypted-message', {
-                            to: recipient,
-                            encryptedData
-                        });
+                        // Send encrypted message via Supabase Realtime or Socket.IO
+                        if (window.supabaseClient) {
+                            // Use Supabase Realtime channel for private messages
+                            const messageChannel = window.supabaseClient.channel(`private:${recipient}`);
+                            messageChannel.send({
+                                type: 'broadcast',
+                                event: 'encrypted-message',
+                                payload: {
+                                    from: user,
+                                    to: recipient,
+                                    encryptedData
+                                }
+                            });
+                            window.supabaseClient.removeChannel(messageChannel);
+                        } else if (socket && socket.connected) {
+                            socket.emit('encrypted-message', {
+                                to: recipient,
+                                encryptedData
+                            });
+                        }
 
                         appendChatMessage(`You → ${recipient}: ${text}`, 'user');
                     } else {
@@ -859,8 +1024,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle page visibility changes
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && currentUsername) {
-            // Reconnect WebSocket if it was disconnected
-            if (!socket || !socket.connected) {
+            // Reconnect WebSocket/Realtime if it was disconnected
+            if ((!socket || !socket.connected) && !realtimeChannel) {
                 connectWebSocket();
             }
         }
@@ -870,17 +1035,38 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('beforeunload', (e) => {
         if (currentUsername) {
             // Update status to offline
-            fetch('/online', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    username: currentUsername, 
-                    is_online: false 
-                }),
-                keepalive: true // هذا يساعد في إرسال الطلب حتى عند إغلاق الصفحة
-            }).catch(error => console.error('Error updating status on close:', error));
+            if (window.supabaseClient) {
+                // Use sendBeacon for reliable delivery on page close
+                const data = JSON.stringify({
+                    username: currentUsername,
+                    is_online: false,
+                    last_seen: new Date().toISOString()
+                });
+                
+                // Try to update via Supabase (may not complete on page close)
+                window.supabaseClient
+                    .from('users')
+                    .update({ 
+                        is_online: false,
+                        last_seen: new Date().toISOString()
+                    })
+                    .eq('username', currentUsername)
+                    .then(() => console.log('Status updated on close'))
+                    .catch(error => console.error('Error updating status on close:', error));
+            } else {
+                // Fallback: Update status on server
+                fetch('/online', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: currentUsername, 
+                        is_online: false 
+                    }),
+                    keepalive: true // هذا يساعد في إرسال الطلب حتى عند إغلاق الصفحة
+                }).catch(error => console.error('Error updating status on close:', error));
+            }
             
-            // Disconnect WebSocket
+            // Disconnect WebSocket/Realtime
             disconnectWebSocket();
         }
     });
@@ -889,14 +1075,28 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currentUsername) {
         setInterval(() => {
             if (currentUsername) {
-                fetch(`/api/user-status/${currentUsername}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            console.log('User status:', data.status);
-                        }
-                    })
-                    .catch(error => console.error('Error checking user status:', error));
+                if (window.supabaseClient) {
+                    window.supabaseClient
+                        .from('users')
+                        .select('is_online, last_seen')
+                        .eq('username', currentUsername)
+                        .single()
+                        .then(({ data, error }) => {
+                            if (!error && data) {
+                                console.log('User status:', data);
+                            }
+                        })
+                        .catch(error => console.error('Error checking user status:', error));
+                } else {
+                    fetch(`/api/user-status/${currentUsername}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                console.log('User status:', data.status);
+                            }
+                        })
+                        .catch(error => console.error('Error checking user status:', error));
+                }
             }
         }, 60000);
     }
