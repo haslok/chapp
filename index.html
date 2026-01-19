@@ -11,8 +11,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Security Libraries -->
-    <script src="/libs/nacl.min.js"></script>
-    <script src="/libs/nacl-util.min.js"></script>
+    <!-- Security Libraries -->
+    <script src="libs/nacl.min.js"></script>
+    <script src="libs/nacl-util.min.js"></script>
 
     <style>
         :root {
@@ -561,8 +562,9 @@
     <script>
         // Check for dependencies
         if (typeof nacl === 'undefined') {
-            alert("Critical Error: Security libraries (TweetNaCl) failed to load. Please check your internet connection.");
-            console.error("nacl is not defined");
+            console.warn("Local nacl libs not found, trying CDN...");
+            // Add CDN fallback scripts dynamically? 
+            // Better to just show error if robust check fails later.
         }
 
         // --- 1. Supabase Config & Init ---
@@ -596,6 +598,7 @@
         class Crypt {
             constructor() {
                 if (typeof nacl === 'undefined') {
+                    alert("Encryption library (TweetNaCl) failed to load. Please check if 'libs' folder is uploaded.");
                     throw new Error("nacl library not loaded");
                 }
                 this.keyPair = nacl.box.keyPair(); // Regenerate keypair on every reload/login
@@ -651,6 +654,12 @@
         // Main Chat Initialization Function
         window.initChat = (firebaseUser) => {
             console.log("Initializing chat for:", firebaseUser.displayName);
+
+            if (typeof io === 'undefined') {
+                console.error("Socket.IO client not loaded. Server might be down or static hosting is used.");
+                alert("Connection Error: Cannot connect to chat server. \n\nIf you are verifying this on static hosting (e.g. GitHub Pages), the backend server is not running or not reachable.");
+                return;
+            }
 
             // Prevent duplicate connections (orphaned sockets)
             if (socket) {
