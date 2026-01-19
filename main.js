@@ -1,5 +1,5 @@
 const express = require("express");
-const socket = require("socket.io");
+const { Server } = require("socket.io");
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -18,7 +18,13 @@ app.get("/", (req, res) => {
 const server = app.listen(port, () => {
     console.log(`Example app listening on port ${port}`);
 });
-const io = socket(server);
+
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
 const users = {};
 
