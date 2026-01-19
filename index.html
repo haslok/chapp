@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Secure Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Security Libraries -->
+    <script src="/libs/nacl.min.js"></script>
+    <script src="/libs/nacl-util.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --sidebar-bg: rgba(30, 41, 59, 0.7);
+            --chat-bg: rgba(30, 41, 59, 0.4);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --primary-color: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(56, 189, 248, 0.15) 0px, transparent 50%);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        /* Login Container */
+        #login-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease;
+        }
+
+        .login-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .login-box h1 {
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .login-desc {
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .login-btn {
+            background: white;
+            color: #333;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .login-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .auth-input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .auth-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .auth-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .toggle-auth {
+            margin-top: 20px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .toggle-auth span {
+            color: var(--primary-color);
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .toggle-auth span:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+            width: 100%;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Main App Container */
+        .container {
+            width: clamp(350px, 90vw, 1200px);
+            height: 85vh;
+            display: flex;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            box-shadow: var(--glass-shadow);
+            overflow: hidden;
+            animation: fadeIn 0.6s ease-out;
+            transition: filter 0.3s;
+        }
+
+        .container.blur {
+            filter: blur(5px);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Sidebar (Users List) */
+        .users_list {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .users_header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logout-btn {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .logout-btn:hover {
+            color: #ef4444;
+        }
+
+        .user {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: transparent;
+            margin-bottom: 5px;
+        }
+
+        .user:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateX(4px);
+        }
+
+        .user img {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            margin-right: 14px;
+            border: 2px solid var(--primary-color);
+            object-fit: cover;
+        }
+
+        .user-info h4 {
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .user-info p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* Chat Area */
+        .chat_box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--chat-bg);
+            position: relative;
+        }
+
+        .chat_header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.3);
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .chat_header h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .chat_header h3 span {
+            color: var(--primary-color);
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 4px;
+            transition: transform 0.2s;
+        }
+
+        .menu-toggle:active {
+            transform: scale(0.95);
+        }
+
+        .chat_body {
+            flex: 1;
+            padding: 20px 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scroll-behavior: smooth;
+        }
+
+        /* Scrollbar Styling */
+        .chat_body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat_body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat_body::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+
+        .chat_body::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Messages */
+        #messages {
+            list-style-type: none;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #messages li {
+            padding: 12px 18px;
+            border-radius: 16px;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-primary);
+            max-width: 80%;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            animation: messagePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            word-wrap: break-word;
+        }
+
+        @keyframes messagePop {
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* Footer / Input Area */
+        .chat_footer {
+            padding: 20px 30px;
+            background: rgba(15, 23, 42, 0.3);
+            border-top: 1px solid var(--border-color);
+        }
+
+        #form {
+            display: flex;
+            gap: 12px;
+            height: 48px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        #form:focus-within {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        #input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 0 20px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        #input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        #form button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #form button:hover {
+            background: var(--primary-hover);
+            transform: scale(1.05);
+        }
+
+        #form button:active {
+            transform: scale(0.95);
+        }
+
+        .overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                width: 100%;
+                height: 100vh;
+                border: none;
+                border-radius: 0;
+            }
+
+            .chat_header {
+                padding: 15px 20px;
+            }
+
+            .menu-toggle {
+                display: block;
+            }
+
+            .users_list {
+                position: absolute;
+                left: -280px;
+                top: 0;
+                bottom: 0;
+                z-index: 100;
+                box-shadow: 5px 0 15px rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(20px);
+            }
+
+            .users_list.active {
+                left: 0;
+            }
+
+            .overlay.active {
+                display: block;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Login UI -->
+    <div id="login-container">
+        <div class="login-box">
+            <h1 id="auth-title">Welcome Back</h1>
+            <p class="login-desc">Sign in to start chatting securely with end-to-end encryption.</p>
+
+            <p class="error-message" id="auth-error"></p>
+
+            <form id="auth-form" style="width: 100%;">
+                <input type="text" id="username" placeholder="Username" class="auth-input hidden" required disabled>
+                <input type="email" id="email" placeholder="Email" class="auth-input" required>
+                <input type="password" id="password" placeholder="Password" class="auth-input" required>
+                <button type="submit" class="login-btn" id="submit-btn" style="width: 100%;">
+                    Sign In
+                </button>
+            </form>
+
+            <p class="toggle-auth">
+                <span id="toggle-text">Don't have an account?</span>
+                <span id="toggle-btn" onclick="toggleAuthMode()">Sign Up</span>
+            </p>
+
+            <p id="config-warning" style="margin-top: 20px; font-size: 0.8rem; color: #ef4444; display: none;">
+                <i class="fas fa-exclamation-triangle"></i> Requires Supabase Config
+            </p>
+        </div>
+    </div>
+
+    <div class="container blur" id="app-container">
+        <!-- Overlay for mobile -->
+        <div class="overlay" id="overlay"></div>
+
+        <!-- Sidebar -->
+        <div class="users_list" id="users_list">
+            <div class="users_header">
+                <div><i class="fas fa-users"></i> Users</div>
+                <div class="logout-btn" onclick="signOutUser()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+            </div>
+            <!-- Users will be populated here -->
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat_box">
+            <div class="chat_header">
+                <button class="menu-toggle" id="menu-toggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h3>Global Chat</h3>
+            </div>
+
+            <div class="chat_body">
+                <ul id="messages">
+                    <li>Welcome! Please select a user to start chatting.</li>
+                </ul>
+            </div>
+
+            <div class="chat_footer">
+                <form id="form" action="">
+                    <input id="input" autocomplete="off" placeholder="Type a secure message..." />
+                    <button>
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Check for dependencies
+        if (typeof nacl === 'undefined') {
+            alert("Critical Error: Security libraries (TweetNaCl) failed to load. Please check your internet connection.");
+            console.error("nacl is not defined");
+        }
+
+        // --- 1. Supabase Config & Init ---
+        const SUPABASE_URL = 'https://xapaegxdsycgjygzyktm.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Ebb2CDww0VOFAjmh7yUQMw_ldYw1uce';
+
+        let supabaseClient;
+
+        try {
+            if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+                throw new Error("Supabase keys not set");
+            }
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            // Hide the warning if config is present
+            const warningEl = document.getElementById('config-warning');
+            if (warningEl) warningEl.style.display = 'none';
+        } catch (e) {
+            console.error("Supabase Init Error:", e);
+            const warningEl = document.getElementById('config-warning');
+            if (warningEl) warningEl.style.display = 'block';
+            showError("Supabase configuration missing.");
+        }
+
+        // --- 2. Chat App Logic, UI, & Cryptography ---
+
+        let socket;
+        let selectedUser = null;
+        let currentUser = null;
+
+        // Cryptography Class
+        class Crypt {
+            constructor() {
+                if (typeof nacl === 'undefined') {
+                    throw new Error("nacl library not loaded");
+                }
+                this.keyPair = nacl.box.keyPair(); // Regenerate keypair on every reload/login
+                this.publicKey = this.keyPair.publicKey;
+                this.secretKey = this.keyPair.secretKey;
+            }
+
+            encrypt(message, publicKey) {
+                const msgUint8 = nacl.util.decodeUTF8(message);
+                const nonce = nacl.randomBytes(24);
+                const decodedPub = nacl.util.decodeBase64(publicKey);
+                // Corrected: nacl.box() is the function for encryption
+                const encrypted = nacl.box(msgUint8, nonce, decodedPub, this.secretKey);
+
+                return {
+                    nonce: nacl.util.encodeBase64(nonce),
+                    encrypted: nacl.util.encodeBase64(encrypted)
+                };
+            }
+
+            decrypt(encryptedBox, nonce, senderPublicKey) {
+                const decodedEncrypted = nacl.util.decodeBase64(encryptedBox);
+                const decodedNonce = nacl.util.decodeBase64(nonce);
+                const decodedSenderKey = nacl.util.decodeBase64(senderPublicKey);
+                // Corrected: nacl.box.open() is the function for decryption
+                const decrypted = nacl.box.open(decodedEncrypted, decodedNonce, decodedSenderKey, this.secretKey);
+
+                if (!decrypted) return null;
+                return nacl.util.encodeUTF8(decrypted);
+            }
+
+            getPublicKeyBase64() {
+                return nacl.util.encodeBase64(this.publicKey);
+            }
+        }
+
+        // Initialize Cryptography safely
+        let crypt;
+        try {
+            crypt = new Crypt();
+        } catch (e) {
+            console.error("Failed to initialize cryptography:", e);
+        }
+
+        // UI Elements
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const chatBody = document.querySelector('.chat_body');
+        const usersListContainer = document.getElementById('users_list');
+        const chatHeaderTitle = document.querySelector('.chat_header h3');
+
+        // Main Chat Initialization Function
+        window.initChat = (firebaseUser) => {
+            console.log("Initializing chat for:", firebaseUser.displayName);
+
+            // Prevent duplicate connections (orphaned sockets)
+            if (socket) {
+                console.log("Disconnecting existing socket before new initialization");
+                socket.disconnect();
+            }
+
+            currentUser = firebaseUser;
+            socket = io();
+
+            socket.on('connect', () => {
+                console.log("Connected to server, registering...");
+
+                // Ensure crypt is ready
+                if (!crypt) {
+                    console.error("Cryptography not ready, cannot register.");
+                    return;
+                }
+
+                socket.emit('register', {
+                    publicKey: crypt.getPublicKeyBase64(),
+                    displayName: firebaseUser.displayName,
+                    photoURL: firebaseUser.photoURL,
+                    uid: firebaseUser.uid
+                });
+            });
+
+            socket.on('users list', (users) => {
+                renderUsers(users);
+            });
+
+            socket.on('private message', (data) => {
+                const { from, encrypted, nonce, fromKey } = data;
+                if (!crypt) return;
+
+                const decryptedMsg = crypt.decrypt(encrypted, nonce, fromKey);
+                if (decryptedMsg) {
+                    appendMessage(decryptedMsg, 'received');
+                } else {
+                    appendMessage("<i>Failed to decrypt message</i>", 'received');
+                }
+            });
+        };
+
+        window.disconnectChat = () => {
+            if (socket) socket.disconnect();
+            selectedUser = null;
+            currentUser = null;
+            chatHeaderTitle.innerHTML = "Global Chat";
+            messages.innerHTML = "<li>Logged out. Please sign in.</li>";
+        }
+
+        // --- 3. Auth Functions & State Listener ---
+
+        let isSignUp = false;
+        const authForm = document.getElementById('auth-form');
+        const usernameInput = document.getElementById('username');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const authTitle = document.getElementById('auth-title');
+        const submitBtn = document.getElementById('submit-btn');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const toggleText = document.getElementById('toggle-text');
+        const authError = document.getElementById('auth-error');
+
+        window.toggleAuthMode = () => {
+            isSignUp = !isSignUp;
+            if (isSignUp) {
+                authTitle.innerText = "Create Account";
+                submitBtn.innerText = "Sign Up";
+                toggleText.innerText = "Already have an account?";
+                toggleBtn.innerText = "Sign In";
+                usernameInput.classList.remove('hidden');
+                usernameInput.disabled = false;
+            } else {
+                authTitle.innerText = "Welcome Back";
+                submitBtn.innerText = "Sign In";
+                toggleText.innerText = "Don't have an account?";
+                toggleBtn.innerText = "Sign Up";
+                usernameInput.classList.add('hidden');
+                usernameInput.disabled = true;
+            }
+            authError.style.display = 'none';
+        };
+
+        const showError = (msg) => {
+            authError.innerText = msg;
+            authError.style.display = 'block';
+        };
+
+        if (authForm) {
+            authForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                authError.style.display = 'none';
+                if (!supabaseClient) return alert("Supabase not configured");
+
+                const email = emailInput.value;
+                const password = passwordInput.value;
+                const username = usernameInput.value;
+
+                try {
+                    submitBtn.disabled = true;
+                    submitBtn.innerText = "Processing...";
+
+                    if (isSignUp) {
+                        const { data, error } = await supabaseClient.auth.signUp({
+                            email,
+                            password,
+                            options: {
+                                data: {
+                                    full_name: username
+                                }
+                            }
+                        });
+                        if (error) throw error;
+                        alert("Sign up successful! Please check your email to confirm your account.");
+                        toggleAuthMode(); // Switch back to login
+                    } else {
+                        const { data, error } = await supabaseClient.auth.signInWithPassword({
+                            email,
+                            password
+                        });
+                        if (error) throw error;
+                    }
+                } catch (error) {
+                    console.error("Auth error:", error);
+                    showError(error.message);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = isSignUp ? "Sign Up" : "Sign In";
+                }
+            });
+        }
+
+        window.signOutUser = async () => {
+            if (!supabaseClient) return;
+            try {
+                const { error } = await supabaseClient.auth.signOut();
+                if (error) throw error;
+                if (emailInput) emailInput.value = '';
+                if (passwordInput) passwordInput.value = '';
+                if (usernameInput) usernameInput.value = '';
+            } catch (error) {
+                console.error("Signout error:", error);
+            }
+        };
+
+        // Listen for Auth State Changes
+        if (supabaseClient) {
+            supabaseClient.auth.onAuthStateChange((event, session) => {
+                console.log("Auth State Change:", event);
+                if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+                    if (session && session.user) {
+                        // User is signed in
+                        document.getElementById('login-container').classList.add('hidden');
+                        document.getElementById('app-container').classList.remove('blur');
+
+                        // Map Supabase user to our App format
+                        const { user_metadata } = session.user;
+                        const appUser = {
+                            uid: session.user.id,
+                            displayName: user_metadata.full_name || user_metadata.name || session.user.email,
+                            photoURL: user_metadata.avatar_url || user_metadata.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${session.user.id}`
+                        };
+
+                        // Initialize Chat
+                        if (typeof window.initChat === 'function') {
+                            window.initChat(appUser);
+                        } else {
+                            console.error("initChat function not defined!");
+                        }
+                    }
+                } else if (event === 'SIGNED_OUT') {
+                    // User is signed out
+                    document.getElementById('login-container').classList.remove('hidden');
+                    document.getElementById('app-container').classList.add('blur');
+                    if (window.disconnectChat) window.disconnectChat();
+                }
+            });
+        }
+
+        // --- 4. User List UI Logic ---
+
+        function renderUsers(users) {
+            const header = usersListContainer.firstElementChild;
+            usersListContainer.innerHTML = '';
+            usersListContainer.appendChild(header);
+
+            users.forEach(user => {
+                if (socket && user.id === socket.id) return; // Don't show self
+
+                const userEl = document.createElement('div');
+                userEl.className = 'user';
+                if (selectedUser && selectedUser.id === user.id) {
+                    userEl.classList.add('active-user');
+                    userEl.style.background = 'rgba(255, 255, 255, 0.1)';
+                }
+
+                userEl.innerHTML = `
+                    <img src="${user.photoURL}" alt="User">
+                    <div class="user-info">
+                        <h4>${user.displayName}</h4>
+                        <p>Online</p>
+                    </div>
+                `;
+
+                userEl.addEventListener('click', () => {
+                    selectUser(user);
+                    document.querySelectorAll('.user').forEach(u => {
+                        u.style.background = 'transparent';
+                        u.classList.remove('active-user');
+                    });
+                    userEl.style.background = 'rgba(255, 255, 255, 0.1)';
+                    userEl.classList.add('active-user');
+
+                    document.getElementById('users_list').classList.remove('active');
+                    document.getElementById('overlay').classList.remove('active');
+                });
+
+                usersListContainer.appendChild(userEl);
+            });
+        }
+
+        function selectUser(user) {
+            selectedUser = user;
+            chatHeaderTitle.innerHTML = `Chatting with <span>${user.displayName}</span>`;
+            messages.innerHTML = '';
+            appendMessage(`Secure connection established with ${user.displayName}`, 'system');
+        }
+
+        function appendMessage(msg, type) {
+            const item = document.createElement('li');
+            item.innerHTML = msg;
+
+            if (type === 'sent') {
+                item.style.alignSelf = 'flex-end';
+                item.style.background = 'var(--primary-color)';
+                item.style.borderBottomLeftRadius = '16px';
+                item.style.borderBottomRightRadius = '4px';
+            } else if (type === 'received') {
+                item.style.alignSelf = 'flex-start';
+                item.style.background = 'rgba(99, 102, 241, 0.1)';
+                item.style.borderBottomLeftRadius = '4px';
+                item.style.borderBottomRightRadius = '16px';
+            } else {
+                item.style.alignSelf = 'center';
+                item.style.background = 'transparent';
+                item.style.color = 'var(--text-secondary)';
+                item.style.fontSize = '0.8rem';
+                item.style.boxShadow = 'none';
+                item.style.padding = '5px';
+            }
+
+            messages.appendChild(item);
+            chatBody.scrollTo({ top: chatBody.scrollHeight, behavior: 'smooth' });
+        }
+
+        // Mobile menu functionality
+        const menuToggle = document.getElementById('menu-toggle');
+        const overlay = document.getElementById('overlay');
+
+        function toggleMenu() {
+            usersListContainer.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        if (menuToggle) menuToggle.addEventListener('click', toggleMenu);
+        if (overlay) overlay.addEventListener('click', toggleMenu);
+
+        // Form Submit
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!socket || !currentUser) return;
+
+                if (input.value && selectedUser) {
+                    if (!crypt) return alert("Encryption system not ready.");
+
+                    const encryptedObj = crypt.encrypt(input.value, selectedUser.publicKey);
+
+                    socket.emit('private message', {
+                        to: selectedUser.id,
+                        encrypted: encryptedObj.encrypted,
+                        nonce: encryptedObj.nonce
+                    });
+
+                    appendMessage(input.value, 'sent');
+                    input.value = '';
+                } else if (!selectedUser) {
+                    alert("Please select a user to chat with first!");
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
